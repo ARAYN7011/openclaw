@@ -208,6 +208,47 @@ struct StatusMenuSummariesTests {
         }
     }
 
+    @Test func `inherited Thinking and Verbose levels leave every choice unchecked`() async throws {
+        try await self.withFixture { fixture in
+            _ = try await fixture.control.request(method: "health")
+            await fixture.sessions.refresh()
+            let inherited = try #require(fixture.sessions.rows.first)
+            try #require(inherited.thinkingLevel == nil && inherited.verboseLevel == nil)
+            let explicit = SessionRow(
+                id: inherited.id,
+                key: inherited.key,
+                kind: inherited.kind,
+                displayName: inherited.displayName,
+                updatedAt: inherited.updatedAt,
+                sessionId: inherited.sessionId,
+                thinkingLevel: "low",
+                verboseLevel: "off",
+                tokens: inherited.tokens)
+            let item = NSMenuItem()
+            func checked(_ identifier: String) throws -> [String] {
+                let menu = try #require(item.submenu?.items.first { $0.identifier?.rawValue == identifier }?.submenu)
+                return menu.items.filter { $0.state == .on }.compactMap {
+                    ($0.representedObject as? [String: String])?["value"]
+                }
+            }
+
+            fixture.sessions.configureSessionItem(item, row: inherited)
+            let built = try #require(item.submenu)
+            #expect(try checked("session.thinking") == [])
+            #expect(try checked("session.verbose") == [])
+
+            fixture.sessions.configureSessionItem(item, row: explicit)
+            #expect(item.submenu === built)
+            #expect(try checked("session.thinking") == ["low"])
+            #expect(try checked("session.verbose") == ["off"])
+
+            fixture.sessions.configureSessionItem(item, row: inherited)
+            #expect(item.submenu === built)
+            #expect(try checked("session.thinking") == [])
+            #expect(try checked("session.verbose") == [])
+        }
+    }
+
     @Test(arguments: [false, true])
     func `new Primary refreshes usage inside the previous Gateway cache window`(keepMenuOpen: Bool) async throws {
         try await self.withFixture { fixture in
